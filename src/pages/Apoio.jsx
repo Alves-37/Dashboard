@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
 import ItemCard from '../components/ItemCard';
 
 const Apoio = () => {
+  const { loading: authLoading, isAuthenticated } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -12,53 +15,53 @@ const Apoio = () => {
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ title: '', message: '', type: 'info' });
 
-  // Dados simulados - em produção, viriam de uma API
-  // Campos do formulário do prototipo37: nome, email, mensagem
-  const [mensagens, setMensagens] = useState([
-    {
-      id: 1,
-      nome: 'João Silva',
-      email: 'joao@email.com',
-      mensagem: 'Não consigo fazer login na minha conta. Quando tento entrar, aparece uma mensagem de erro.',
-      status: 'Pendente',
-      data: '2024-09-28 14:30'
-    },
-    {
-      id: 2,
-      nome: 'Maria Santos',
-      email: 'maria@email.com',
-      mensagem: 'Como faço para alterar meu perfil? Gostaria de mudar minha foto e informações de contato.',
-      status: 'Em Atendimento',
-      data: '2024-09-27 10:15'
-    },
-    {
-      id: 3,
-      nome: 'Pedro Costa',
-      email: 'pedro@email.com',
-      mensagem: 'Aparece erro 500 ao tentar enviar mensagem para uma empresa. Já tentei várias vezes.',
-      status: 'Resolvido',
-      data: '2024-09-25 16:45'
-    },
-    {
-      id: 4,
-      nome: 'Ana Oliveira',
-      email: 'ana@email.com',
-      mensagem: 'Gostaria de saber mais sobre os planos disponíveis e suas funcionalidades.',
-      status: 'Pendente',
-      data: '2024-09-26 09:20'
-    },
-  ]);
+  // Dados vindos da API
+  const [mensagens, setMensagens] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(12);
+  const [loadingList, setLoadingList] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('Todos');
 
-  const filteredMensagens = mensagens.filter(msg => {
-    const matchesSearch = msg.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         msg.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         msg.mensagem.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'Todos' || msg.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  // Buscar mensagens reais do backend
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchApoio() {
+      if (authLoading || !isAuthenticated) return;
+      try {
+        setLoadingList(true);
+        const params = { page, limit };
+        if (searchTerm) params.busca = searchTerm;
+        if (filterStatus !== 'Todos') {
+          const map = { 'Pendente': 'pendente', 'Em Atendimento': 'em_atendimento', 'Resolvido': 'resolvido' };
+          params.status = map[filterStatus] || undefined;
+        }
+        const res = await api.get('/admin/apoio', { params });
+        if (cancelled) return;
+        const { items, total: totalCount } = res.data || { items: [], total: 0 };
+        const mapped = (items || []).map(it => ({
+          ...it,
+          data: it.data ? new Date(it.data).toLocaleString() : '',
+        }));
+        setMensagens(mapped);
+        setTotal(totalCount || mapped.length);
+      } catch (err) {
+        console.error('Erro ao carregar apoio:', err);
+      } finally {
+        if (!cancelled) setLoadingList(false);
+      }
+    }
+    fetchApoio();
+    return () => { cancelled = true; };
+  }, [page, limit, searchTerm, filterStatus, authLoading, isAuthenticated]);
+
+  // Após mudar busca, voltar para página 1
+  useEffect(() => { setPage(1); }, [searchTerm, filterStatus]);
+
+  // Como já filtramos no backend, não aplicamos filtro local extra
+  const filteredMensagens = mensagens;
 
   const showAlert = (title, message, type = 'info') => {
     setAlertConfig({ title, message, type });
@@ -133,8 +136,23 @@ const Apoio = () => {
       </div>
 
       {/* Grid de Cards */}
+      {loadingList && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-lg shadow-md p-4 sm:p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-1/2 mb-3" />
+              <div className="space-y-2">
+                <div className="h-3 bg-gray-200 rounded w-full" />
+                <div className="h-3 bg-gray-200 rounded w-5/6" />
+                <div className="h-3 bg-gray-200 rounded w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {filteredMensagens.map((msg) => (
+        {!loadingList && filteredMensagens.map((msg) => (
           <ItemCard
             key={msg.id}
             onClick={() => {
@@ -167,13 +185,37 @@ const Apoio = () => {
         ))}
       </div>
 
-      {filteredMensagens.length === 0 && (
+      {!loadingList && filteredMensagens.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg shadow-md">
           <div className="text-6xl mb-4">💬</div>
           <h3 className="text-xl font-semibold text-gray-800 mb-2">Nenhuma mensagem encontrada</h3>
           <p className="text-gray-600">Tente ajustar os filtros de busca</p>
         </div>
       )}
+
+      <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-600">
+        <div>
+          {loadingList ? 'Carregando...' : (
+            <>Mostrando <span className="font-semibold">{filteredMensagens.length}</span> de <span className="font-semibold">{total}</span> mensagens</>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loadingList}
+            className={`px-4 py-2 border border-gray-300 rounded-lg transition-colors ${page <= 1 || loadingList ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+          >
+            ← Anterior
+          </button>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loadingList || (page * limit >= total)}
+            className={`px-4 py-2 border border-gray-300 rounded-lg transition-colors ${loadingList || (page * limit >= total) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+          >
+            Próximo →
+          </button>
+        </div>
+      </div>
 
       {/* Modal de Detalhes */}
       <Modal 

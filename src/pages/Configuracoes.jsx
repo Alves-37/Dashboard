@@ -1,39 +1,80 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
 import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
+import { useAuth } from '../context/AuthContext';
 
 const Configuracoes = () => {
+  const { loading: authLoading, isAuthenticated } = useAuth();
   const [showResetModal, setShowResetModal] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ title: '', message: '', type: 'info' });
   const [isResetting, setIsResetting] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
+  const [sysInfo, setSysInfo] = useState({ name: '', version: '', nodeEnv: '', serverTime: '' });
+  const [loadingInfo, setLoadingInfo] = useState(false);
 
   const showAlert = (title, message, type = 'info') => {
     setAlertConfig({ title, message, type });
     setShowAlertModal(true);
   };
 
+  const handlePurgeUsers = async () => {
+    setIsPurging(true);
+    try {
+      const res = await api.post('/admin/maintenance/purge-users');
+      const info = res?.data || {};
+      showAlert(
+        'Purgar Contas Expiradas',
+        `Processo concluído. Contas removidas: ${info.removidos ?? 0}`,
+        'success'
+      );
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Erro ao purgar contas';
+      showAlert('Erro', msg, 'error');
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
+  // Carregar informações reais do sistema
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchInfo() {
+      if (authLoading || !isAuthenticated) return;
+      try {
+        setLoadingInfo(true);
+        const res = await api.get('/admin/system/info');
+        if (cancelled) return;
+        setSysInfo(res.data || {});
+      } catch (e) {
+        // silencioso
+      } finally {
+        if (!cancelled) setLoadingInfo(false);
+      }
+    }
+    fetchInfo();
+    return () => { cancelled = true; };
+  }, [authLoading, isAuthenticated]);
+
   const handleResetDatabase = async () => {
     setIsResetting(true);
-    
-    // Simular reset do banco de dados
-    setTimeout(() => {
-      setIsResetting(false);
+    try {
+      const res = await api.post('/admin/maintenance/reset', { confirm: 'RESET_DB' });
+      const info = res?.data || {};
       setShowResetModal(false);
       showAlert(
         'Sucesso!',
-        'Banco de dados resetado com sucesso!\n\nTodos os dados foram restaurados para o estado inicial.',
+        `Banco de dados resetado com sucesso!\n\nAdmin padrão recriado:\nEmail: ${info.admin?.email || 'admin@admin.com'}\nSenha: ${info.admin?.senha || 'admin123'}`,
         'success'
       );
-      
-      // Em produção, fazer requisição para API
-      // await api.post('/admin/reset-database');
-      
-      // Recarregar após fechar o modal
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-    }, 2000);
+      setTimeout(() => { window.location.reload(); }, 2500);
+    } catch (err) {
+      const msg = err?.response?.data?.error || err?.message || 'Erro ao resetar banco de dados';
+      showAlert('Erro', msg, 'error');
+    } finally {
+      setIsResetting(false);
+    }
   };
 
   const handleExportData = () => {
@@ -79,6 +120,20 @@ const Configuracoes = () => {
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
             >
               Resetar
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            <div>
+              <h3 className="font-semibold text-gray-800">Purgar Contas Expiradas</h3>
+              <p className="text-sm text-gray-600">Remove contas suspensas há mais de 30 dias sem contato com o suporte.</p>
+            </div>
+            <button
+              onClick={handlePurgeUsers}
+              disabled={isPurging}
+              className={`px-4 py-2 ${isPurging ? 'bg-gray-400' : 'bg-orange-600 hover:bg-orange-700'} text-white rounded-lg transition-colors font-medium`}
+            >
+              {isPurging ? 'Purga em andamento...' : 'Purgar' }
             </button>
           </div>
 
@@ -130,23 +185,34 @@ const Configuracoes = () => {
           </svg>
           Informações do Sistema
         </h2>
-        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600">Versão</p>
-            <p className="text-lg font-semibold text-gray-800">1.0.0</p>
+            {loadingInfo ? (
+              <div className="h-5 bg-gray-200 rounded w-24 animate-pulse" />
+            ) : (
+              <p className="text-lg font-semibold text-gray-800">{sysInfo.version || '-'}</p>
+            )}
           </div>
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600">Ambiente</p>
-            <p className="text-lg font-semibold text-gray-800">Desenvolvimento</p>
+            {loadingInfo ? (
+              <div className="h-5 bg-gray-200 rounded w-36 animate-pulse" />
+            ) : (
+              <p className="text-lg font-semibold text-gray-800 capitalize">{sysInfo.nodeEnv || '-'}</p>
+            )}
           </div>
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600">API Base URL</p>
-            <p className="text-lg font-semibold text-gray-800 truncate">http://localhost:5000/api</p>
+            <p className="text-lg font-semibold text-gray-800 truncate">{api?.defaults?.baseURL || '-'}</p>
           </div>
           <div className="p-4 bg-gray-50 rounded-lg">
             <p className="text-sm text-gray-600">Última Atualização</p>
-            <p className="text-lg font-semibold text-gray-800">01/10/2025</p>
+            {loadingInfo ? (
+              <div className="h-5 bg-gray-200 rounded w-40 animate-pulse" />
+            ) : (
+              <p className="text-lg font-semibold text-gray-800">{sysInfo.serverTime ? new Date(sysInfo.serverTime).toLocaleString() : '-'}</p>
+            )}
           </div>
         </div>
       </div>

@@ -1,17 +1,15 @@
 import axios from 'axios';
 
-// Define a baseURL baseada em variáveis de ambiente do Vite
-// Prioriza VITE_API_BASE_URL; caso não exista, usa um fallback por ambiente
-const baseURL =
-  import.meta?.env?.VITE_API_BASE_URL ||
-  (import.meta?.env?.DEV
-    ? 'http://localhost:5000/api'
-    : 'https://seu-backend-production.com/api');
+// Diagnóstico do ambiente Vite
+const env = import.meta?.env || {};
+console.log('🔧 Vite env:', { DEV: env.DEV, MODE: env.MODE, VITE_API_BASE_URL: env.VITE_API_BASE_URL });
+
+// Base URL da API
+// Regra: sempre prioriza VITE_API_BASE_URL; se ausente, cai para localhost:5000/api
+const baseURL = env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 console.log('🔗 API Base URL:', baseURL);
 
-const api = axios.create({
-  baseURL,
-});
+const api = axios.create({ baseURL });
 
 export default api;

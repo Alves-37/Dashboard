@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
 import ItemCard from '../components/ItemCard';
 
 const Usuarios = () => {
+  const { loading: authLoading, isAuthenticated } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUsuario, setSelectedUsuario] = useState(null);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -12,99 +15,109 @@ const Usuarios = () => {
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertConfig, setAlertConfig] = useState({ title: '', message: '', type: 'info' });
   
-  // Dados simulados - em produção, viriam de uma API
-  // Campos do cadastro do prototipo37: nome, email, senha (não exibida), tipo (usuario/empresa)
-  // Perfil adicional: telefone, bio, formacao, experiencia, etc.
-  const [usuarios, setUsuarios] = useState([
-    { 
-      id: 1, 
-      nome: 'João Silva', 
-      email: 'joao@email.com', 
-      tipo: 'usuario', 
-      status: 'Ativo', 
-      dataCadastro: '2024-01-15 10:30',
-      perfil: {
-        telefone: '(11) 98765-4321',
-        dataNascimento: '1995-05-20',
-        endereco: 'São Paulo, SP',
-        bio: 'Desenvolvedor Full Stack com 5 anos de experiência',
-        formacao: 'Ciência da Computação',
-        instituicao: 'USP',
-        experiencia: '5 anos',
-        linkedin: 'linkedin.com/in/joaosilva',
-        github: 'github.com/joaosilva'
-      }
-    },
-    { 
-      id: 2, 
-      nome: 'TechCorp Ltda', 
-      email: 'contato@techcorp.com', 
-      tipo: 'empresa', 
-      status: 'Ativo', 
-      dataCadastro: '2024-02-20 14:45',
-      perfil: {
-        razaoSocial: 'TechCorp Tecnologia Ltda',
-        nuit: '123456789',
-        telefone: '(11) 3000-0000',
-        endereco: 'Av. Paulista, 1000 - São Paulo, SP',
-        descricao: 'Empresa de tecnologia focada em soluções inovadoras',
-        setor: 'Tecnologia',
-        tamanho: '50-200',
-        website: 'www.techcorp.com'
-      }
-    },
-    { 
-      id: 3, 
-      nome: 'Pedro Costa', 
-      email: 'pedro@email.com', 
-      tipo: 'usuario', 
-      status: 'Inativo', 
-      dataCadastro: '2024-03-10 09:15',
-      perfil: {
-        telefone: '(21) 99876-5432',
-        bio: 'Designer UI/UX apaixonado por criar experiências incríveis',
-        formacao: 'Design Gráfico',
-        experiencia: '3 anos'
-      }
-    },
-    { 
-      id: 4, 
-      nome: 'Ana Oliveira', 
-      email: 'ana@email.com', 
-      tipo: 'usuario', 
-      status: 'Ativo', 
-      dataCadastro: '2024-04-05 16:20',
-      perfil: {
-        telefone: '(31) 97654-3210',
-        bio: 'Analista de dados com foco em Business Intelligence',
-        formacao: 'Estatística'
-      }
-    },
-    { 
-      id: 5, 
-      nome: 'InnovaSoft', 
-      email: 'rh@innovasoft.com', 
-      tipo: 'empresa', 
-      status: 'Ativo', 
-      dataCadastro: '2024-05-12 11:00',
-      perfil: {
-        razaoSocial: 'InnovaSoft Soluções em Software S.A.',
-        telefone: '(21) 2500-5000',
-        descricao: 'Desenvolvimento de software personalizado',
-        setor: 'TI',
-        tamanho: '10-50'
-      }
-    },
-  ]);
+  // Estado vindo da API
+  const [usuarios, setUsuarios] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(12);
+  const [loadingList, setLoadingList] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('Todos');
+  const [filterStatus, setFilterStatus] = useState('Todos'); // visual apenas, backend ainda não tem status
 
+  // Helper para construir URL da foto
+  function buildFotoUrl(foto) {
+    if (!foto) return null;
+    const f = String(foto);
+    if (f.startsWith('http://') || f.startsWith('https://') || f.startsWith('data:')) {
+      return f;
+    }
+    // Se for path relativo (ex: /uploads/xyz.png), construir com a origem do backend
+    try {
+      const base = api?.defaults?.baseURL || '';
+      const url = new URL(base, window.location.origin);
+      // base costuma terminar com /api; queremos só a origin
+      const origin = url.origin;
+      // Se já vier com /uploads no início
+      if (f.startsWith('/')) return origin + f;
+      // Se não contém 'uploads', prefixar automaticamente
+      const rel = f.includes('uploads') ? f : 'uploads/' + f;
+      return origin + '/' + rel;
+    } catch (e) {
+      return f; // fallback
+    }
+  }
+
+  // Carregar usuários reais do backend ao entrar na página (e quando filtros mudarem)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchUsuarios() {
+      if (authLoading || !isAuthenticated) return; // aguardar token do AuthContext
+      try {
+        setLoadingList(true);
+        const params = {
+          page,
+          limit,
+        };
+        if (searchTerm) params.busca = searchTerm;
+        // Mapeia filtro visual de tipo
+        // Manter "Todos" como sem filtro
+        // (status não existe no backend por enquanto)
+        // Tipos válidos: usuario | empresa
+        // Aqui poderíamos adicionar outro seletor para tipo.
+
+        const res = await api.get('/admin/usuarios', { params });
+        if (cancelled) return;
+        const { items, total: totalCount } = res.data || { items: [], total: 0 };
+
+        const mapped = (items || []).map((u) => ({
+          id: u.id,
+          nome: u.nome,
+          email: u.email,
+          tipo: u.tipo,
+          status: 'Ativo', // até existir campo status real
+          dataCadastro: u.createdAt ? new Date(u.createdAt).toLocaleString() : '',
+          // Empresas costumam usar campo 'logo'; candidatos usam 'foto'
+          fotoUrl: buildFotoUrl(u.logo || u.foto),
+          perfil: {
+            telefone: u.telefone,
+            endereco: u.endereco,
+            bio: u.bio,
+            formacao: u.formacao,
+            instituicao: u.instituicao,
+            experiencia: u.experiencia,
+            linkedin: u.linkedin,
+            github: u.github,
+            razaoSocial: u.razaoSocial,
+            nuit: u.nuit,
+            website: u.website,
+            tamanho: u.tamanho,
+            descricao: u.descricao,
+          },
+        }));
+
+        setUsuarios(mapped);
+        setTotal(totalCount || mapped.length);
+      } catch (err) {
+        console.error('Erro ao carregar usuários:', err);
+      } finally {
+        if (!cancelled) setLoadingList(false);
+      }
+    }
+
+    fetchUsuarios();
+    return () => { cancelled = true; };
+  }, [searchTerm, page, limit, authLoading, isAuthenticated]);
+
+  // Resetar paginação quando termo de busca muda
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  // Filtragem visual local por status (enquanto não há no backend)
   const filteredUsuarios = usuarios.filter(usuario => {
-    const matchesSearch = usuario.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         usuario.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'Todos' || usuario.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    return matchesStatus;
   });
 
   const showAlert = (title, message, type = 'info') => {
@@ -195,8 +208,29 @@ const Usuarios = () => {
       </div>
 
       {/* Grid de Cards */}
+      {loadingList && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-lg shadow-md p-4 sm:p-6 animate-pulse">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-full bg-gray-200" />
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
+                  <div className="h-3 bg-gray-200 rounded w-1/3" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 bg-gray-200 rounded w-full" />
+                <div className="h-3 bg-gray-200 rounded w-5/6" />
+                <div className="h-3 bg-gray-200 rounded w-2/3" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {filteredUsuarios.map((usuario) => (
+        {!loadingList && filteredUsuarios.map((usuario) => (
           <ItemCard
             key={usuario.id}
             onClick={() => {
@@ -206,9 +240,17 @@ const Usuarios = () => {
           >
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                  {usuario.nome.charAt(0).toUpperCase()}
-                </div>
+                {usuario.fotoUrl ? (
+                  <img
+                    src={usuario.fotoUrl}
+                    alt={usuario.nome}
+                    className="w-12 h-12 rounded-full object-cover border"
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                    {usuario.nome.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
                   <h3 className="font-semibold text-gray-900">{usuario.nome}</h3>
                   <p className="text-sm text-gray-500">{usuario.email}</p>
@@ -244,7 +286,7 @@ const Usuarios = () => {
         ))}
       </div>
 
-      {filteredUsuarios.length === 0 && (
+      {!loadingList && filteredUsuarios.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg shadow-md">
           <div className="text-6xl mb-4">👥</div>
           <h3 className="text-xl font-semibold text-gray-800 mb-2">Nenhum usuário encontrado</h3>
@@ -254,13 +296,27 @@ const Usuarios = () => {
 
       <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-gray-600">
         <div>
-          Mostrando <span className="font-semibold">{filteredUsuarios.length}</span> de <span className="font-semibold">{usuarios.length}</span> usuários
+          {loadingList ? (
+            <span>Carregando...</span>
+          ) : (
+            <>
+              Mostrando <span className="font-semibold">{filteredUsuarios.length}</span> de <span className="font-semibold">{total}</span> usuários
+            </>
+          )}
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loadingList}
+            className={`px-4 py-2 border border-gray-300 rounded-lg transition-colors ${page <= 1 || loadingList ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+          >
             ← Anterior
           </button>
-          <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loadingList || (page * limit >= total)}
+            className={`px-4 py-2 border border-gray-300 rounded-lg transition-colors ${loadingList || (page * limit >= total) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+          >
             Próximo →
           </button>
         </div>
@@ -278,9 +334,17 @@ const Usuarios = () => {
         {selectedUsuario && (
           <div className="space-y-6">
             <div className="flex items-center gap-4 pb-4 border-b">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                {selectedUsuario.nome.charAt(0).toUpperCase()}
-              </div>
+              {selectedUsuario.fotoUrl ? (
+                <img
+                  src={selectedUsuario.fotoUrl}
+                  alt={selectedUsuario.nome}
+                  className="w-16 h-16 rounded-full object-cover border"
+                />
+              ) : (
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                  {selectedUsuario.nome.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <h3 className="text-xl font-semibold text-gray-900">{selectedUsuario.nome}</h3>
                 <p className="text-gray-500">{selectedUsuario.email}</p>

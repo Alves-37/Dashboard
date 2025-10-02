@@ -24,45 +24,12 @@ export function AuthProvider({ children }) {
   // Função para login
   async function login({ email, senha }) {
     setLoading(true);
-    
-    // MODO DESENVOLVIMENTO: Login simulado com dados estáticos
-    // Remova este bloco quando tiver backend real
-    if (import.meta.env.DEV) {
-      try {
-        // Simular delay de rede
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Validação básica
-        if (!email || !senha) {
-          throw new Error('Email e senha são obrigatórios');
-        }
-        
-        // Criar usuário simulado
-        const user = {
-          id: 1,
-          nome: email.split('@')[0] || 'Administrador',
-          email: email,
-          tipo: 'admin',
-          role: 'admin'
-        };
-        
-        const token = 'fake-jwt-token-' + Date.now();
-        
-        localStorage.setItem(TOKEN_KEY, token);
-        localStorage.setItem(USER_KEY, JSON.stringify(user));
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        setUser(user);
-        setLoading(false);
-        return user;
-      } catch (error) {
-        setLoading(false);
-        throw error;
-      }
-    }
-    
-    // MODO PRODUÇÃO: Login real com API
+    // Login real no backend admin
     try {
-      const response = await api.post('/auth/login', { email, senha });
+      if (!email || !senha) {
+        throw new Error('Email e senha são obrigatórios');
+      }
+      const response = await api.post('/admin/auth/login', { email, senha });
       const { token, user } = response.data;
       localStorage.setItem(TOKEN_KEY, token);
       localStorage.setItem(USER_KEY, JSON.stringify(user));
