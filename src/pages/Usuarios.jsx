@@ -125,18 +125,30 @@ const Usuarios = () => {
     setShowAlertModal(true);
   };
 
-  const handleAtivar = (id) => {
-    setUsuarios(usuarios.map(usuario => 
-      usuario.id === id ? { ...usuario, status: 'Ativo' } : usuario
-    ));
-    showAlert('Sucesso!', 'Usuário ativado com sucesso.', 'success');
+  const handleAtivar = async (id) => {
+    try {
+      await api.put(`/admin/usuarios/${id}/ativar`);
+      setUsuarios(usuarios.map(usuario => 
+        usuario.id === id ? { ...usuario, status: 'Ativo' } : usuario
+      ));
+      showAlert('Sucesso!', 'Usuário ativado com sucesso.', 'success');
+    } catch (error) {
+      console.error('Erro ao ativar usuário:', error);
+      showAlert('Erro!', error.response?.data?.error || 'Erro ao ativar usuário.', 'error');
+    }
   };
 
-  const handleDesativar = (id) => {
-    setUsuarios(usuarios.map(usuario => 
-      usuario.id === id ? { ...usuario, status: 'Inativo' } : usuario
-    ));
-    showAlert('Sucesso!', 'Usuário desativado com sucesso.', 'success');
+  const handleDesativar = async (id) => {
+    try {
+      await api.put(`/admin/usuarios/${id}/desativar`);
+      setUsuarios(usuarios.map(usuario => 
+        usuario.id === id ? { ...usuario, status: 'Inativo' } : usuario
+      ));
+      showAlert('Sucesso!', 'Usuário desativado com sucesso.', 'success');
+    } catch (error) {
+      console.error('Erro ao desativar usuário:', error);
+      showAlert('Erro!', error.response?.data?.error || 'Erro ao desativar usuário.', 'error');
+    }
   };
 
   const handleBanir = (id) => {
@@ -150,11 +162,19 @@ const Usuarios = () => {
     setShowConfirmDelete(true);
   };
 
-  const confirmDelete = () => {
-    setUsuarios(usuarios.filter(usuario => usuario.id !== userToDelete));
-    setIsModalOpen(false);
-    setUserToDelete(null);
-    showAlert('Sucesso!', 'Usuário excluído com sucesso.', 'success');
+  const confirmDelete = async () => {
+    try {
+      await api.delete(`/admin/usuarios/${userToDelete}`);
+      setUsuarios(usuarios.filter(usuario => usuario.id !== userToDelete));
+      setShowConfirmDelete(false);
+      setIsModalOpen(false);
+      setUserToDelete(null);
+      showAlert('Sucesso!', 'Usuário excluído com sucesso.', 'success');
+    } catch (error) {
+      console.error('Erro ao excluir usuário:', error);
+      setShowConfirmDelete(false);
+      showAlert('Erro!', error.response?.data?.error || 'Erro ao excluir usuário.', 'error');
+    }
   };
 
   const getStatusColor = (status) => {
