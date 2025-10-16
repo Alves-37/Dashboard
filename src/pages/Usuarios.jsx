@@ -75,7 +75,8 @@ const Usuarios = () => {
           nome: u.nome,
           email: u.email,
           tipo: u.tipo,
-          status: 'Ativo', // até existir campo status real
+          suspended: !!u.suspended,
+          status: u.suspended ? 'Inativo' : 'Ativo',
           dataCadastro: u.createdAt ? new Date(u.createdAt).toLocaleString() : '',
           // Empresas costumam usar campo 'logo'; candidatos usam 'foto'
           fotoUrl: buildFotoUrl(u.logo || u.foto),
@@ -129,7 +130,7 @@ const Usuarios = () => {
     try {
       await api.put(`/admin/usuarios/${id}/ativar`);
       setUsuarios(usuarios.map(usuario => 
-        usuario.id === id ? { ...usuario, status: 'Ativo' } : usuario
+        usuario.id === id ? { ...usuario, suspended: false, status: 'Ativo' } : usuario
       ));
       showAlert('Sucesso!', 'Usuário ativado com sucesso.', 'success');
     } catch (error) {
@@ -142,7 +143,7 @@ const Usuarios = () => {
     try {
       await api.put(`/admin/usuarios/${id}/desativar`);
       setUsuarios(usuarios.map(usuario => 
-        usuario.id === id ? { ...usuario, status: 'Inativo' } : usuario
+        usuario.id === id ? { ...usuario, suspended: true, status: 'Inativo' } : usuario
       ));
       showAlert('Sucesso!', 'Usuário desativado com sucesso.', 'success');
     } catch (error) {
